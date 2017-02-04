@@ -185,7 +185,9 @@ static void startAdvertising(void)
     whitelistPeerCnt = (sizeof(whitelistPeers) / sizeof(pm_peer_id_t));
     peerListGet(whitelistPeers, &whitelistPeerCnt);
     __Nrf_Success pm_whitelist_set(whitelistPeers, whitelistPeerCnt);
-    __Nrf_Success pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
+    uint32_t err = pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
+    if ( err != NRF_ERROR_NOT_SUPPORTED )
+        __Nrf_Success err;
     isWlChanged = false;
     (void)isWlChanged;
     __Nrf_Success ble_advertising_start(BLE_ADV_MODE_FAST);
