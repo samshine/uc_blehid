@@ -58,7 +58,7 @@ static ble_hids_t   hids;
 static ble_bas_t    bas;
 static uint16_t     connHandle = BLE_CONN_HANDLE_INVALID;
 
-static pm_peer_id_t peerId;
+static pm_peer_id_t peerId = PM_PEER_ID_INVALID;
 static pm_peer_id_t whitelistPeers[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
 static uint32_t     whitelistPeerCnt;
 static bool         isWlChanged = false;
@@ -184,10 +184,9 @@ static void startAdvertising(void)
     memset(whitelistPeers, PM_PEER_ID_INVALID, sizeof(whitelistPeers));
     whitelistPeerCnt = (sizeof(whitelistPeers) / sizeof(pm_peer_id_t));
     peerListGet(whitelistPeers, &whitelistPeerCnt);
+    whitelistPeerCnt = 0;
     __Nrf_Success pm_whitelist_set(whitelistPeers, whitelistPeerCnt);
-    uint32_t err = pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
-    if ( err != NRF_ERROR_NOT_SUPPORTED )
-        __Nrf_Success err;
+    __Nrf_Supported pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
     isWlChanged = false;
     (void)isWlChanged;
     __Nrf_Success ble_advertising_start(BLE_ADV_MODE_FAST);
@@ -254,6 +253,7 @@ static void initPeerManager(void)
     ble_gap_sec_params_t secParam = {0,};
 
     __Nrf_Success pm_init();
+    pm_peers_delete();
 
     secParam.bond           = SEC_PARAM_BOND;
     secParam.mitm           = SEC_PARAM_MITM;
@@ -486,11 +486,11 @@ void ucSetup_Hid(
 
     initPeerManager();
     initGapParams(deviceName);
-    initAdvertising();
     initBas();
     initDis(vendorId,productId,vendorName);
     initHids();
     initConnParams();
+    initAdvertising();
     startAdvertising();
 }
 
@@ -570,7 +570,7 @@ void sysDispatch(uint32_t e)
 void pmEvtHandler(const pm_evt_t *e)
 {
     uint32_t err;
-
+    INFO("pmEvtHandler => %?",$u(e->evt_id));
     switch ( e->evt_id )
     {
         case PM_EVT_BONDED_PEER_CONNECTED:
@@ -616,8 +616,7 @@ void pmEvtHandler(const pm_evt_t *e)
                 __Nrf_Success err;
             break;
 
-        case PM_EVT_PEERS_DELETE_SUCCEEDED:
-            startAdvertising();
+        case PM_EVT_PEERS_DELETE_SUCCEEDED:            
             break;
 
         case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:
@@ -652,6 +651,7 @@ void advEvtHandler(ble_adv_evt_t e)
 {
     uint32_t err;
 
+    INFO("advEvtHandler => %?",$u(e));
     switch ( e )
     {
         case BLE_ADV_EVT_DIRECTED:
@@ -671,6 +671,7 @@ void advEvtHandler(ble_adv_evt_t e)
             //sleep_mode_enter();
             break;
         case BLE_ADV_EVT_WHITELIST_REQUEST:
+            INFO("evt => BLE_ADV_EVT_WHITELIST_REQUEST");
         {
             ble_gap_addr_t addrs[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
             ble_gap_irk_t  irks[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
@@ -682,6 +683,7 @@ void advEvtHandler(ble_adv_evt_t e)
         }
 
         case BLE_ADV_EVT_PEER_ADDR_REQUEST:
+            INFO("evt => BLE_ADV_EVT_PEER_ADDR_REQUEST");
         {
             pm_peer_data_bonding_t p;
 
@@ -704,6 +706,7 @@ void advEvtHandler(ble_adv_evt_t e)
 
 void hidsEvtHandler(ble_hids_t *hids, ble_hids_evt_t *e)
 {
+    INFO("hidsEvtHandler => %?",$u(e->evt_type));
     switch ( e->evt_type )
     {
         case BLE_HIDS_EVT_BOOT_MODE_ENTERED: break;
@@ -724,8 +727,7 @@ void hidsEvtHandler(ble_hids_t *hids, ble_hids_evt_t *e)
 
 void bleEvtHandler(const ble_evt_t *e)
 {
-    uint32_t err;
-
+    INFO("bleEvtHandler => %?",$u(e->header.evt_id));
     switch ( e->header.evt_id )
     {
         case BLE_GAP_EVT_CONNECTED:
@@ -743,10 +745,9 @@ void bleEvtHandler(const ble_evt_t *e)
             // drop awating reports
 
             connHandle = BLE_CONN_HANDLE_INVALID;
+
             __Nrf_Success pm_whitelist_set(whitelistPeers,whitelistPeerCnt);
-            err = pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
-            if ( err != NRF_ERROR_NOT_SUPPORTED )
-                __Nrf_Success err;
+            __Nrf_Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
 
             isWlChanged = false;
             break;
