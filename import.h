@@ -116,14 +116,14 @@ enum
     UC_HID_MAX_REPORT_SIZE = 64,
 };
 
-#define hidRawReport(Kind,Length,Id,...) \
+#define RAW_REPORT(Kind,Length,Id,...) \
     ( ( (uint32_t)(Kind << 24) )| \
       ( (uint32_t)(Id)<<16 )| \
       ( (uint32_t)(Length) ) )
 
-#define hidRawInputReport(...) hidRawReport(UC_HID_INPUT_REPORT,__VA_ARGS__,0,0)
-#define hidRawOutputReport(...) hidRawReport(UC_HID_OUTPUT_REPORT,__VA_ARGS__,0,0)
-#define hidRawFeatureReport(...) hidRawReport(UC_HID_FEATURE_REPORT,__VA_ARGS__,0,0)
+#define RAW_INPUT_REPORT(...) RAW_REPORT(UC_HID_INPUT_REPORT,__VA_ARGS__,0,0)
+#define RAW_OUTPUT_REPORT(...) RAW_REPORT(UC_HID_OUTPUT_REPORT,__VA_ARGS__,0,0)
+#define RAW_FEATURE_REPORT(...) RAW_REPORT(UC_HID_FEATURE_REPORT,__VA_ARGS__,0,0)
 
 typedef struct UcHidReport UcHidReport;
 struct UcHidReport
@@ -143,7 +143,7 @@ enum UcHidError
     UC_HID_REPORT_ERROR,
 };
 
-void ucSetup_Hid(
+void setup_hid(
     const char *deviceName,
     const char *vendorName,
     uint16_t vendorId,
@@ -151,12 +151,12 @@ void ucSetup_Hid(
     uint32_t count,
     ...);
 
-UcHidError ucSend_HidReport(struct UcHidReport *report);
-UcHidReport *ucAlloc_HidInputReport(uint8_t id);
-UcHidReport *ucAlloc_HidFeatureReport(uint8_t id);
-UcHidReport *ucGetIf_HidOutputReport(struct UcEvent *e);
-UcHidReport *ucGetIf_HidFeatureReport(struct UcEvent *e);
+UcHidError send_hidReport(struct UcHidReport *report);
+UcHidReport *alloc_hidInputReport(uint8_t id);
+UcHidReport *alloc_hidFeatureReport(uint8_t id);
+UcHidReport *getIf_hidOutputReport(struct UcEvent *e);
+UcHidReport *getIf_hidFeatureReport(struct UcEvent *e);
 
 #ifdef __nRF5x_UC__
-void ucErase_BleBonds(void);
+void erase_bleBonds(void);
 #endif

@@ -16,7 +16,7 @@
 #include <fds.h>
 #include <nrf_log.h>
 
-#define INFO(...) ucPrint("uc_hid:" __VA_ARGS__)
+#define INFO(...) PRINT("uc_hid:" __VA_ARGS__)
 
 #define UC_HID_REPORTS_HEAP_MAX_COUNT       10+3
 #define UC_HID_REPORTS_DEF_MAX_COUNT        5
@@ -74,14 +74,14 @@ static ble_uuid_t   advUuids[] = {
 #define REPORT_ID(df) ((uint8_t)((df) >> 16))
 #define REPORT_LEN(df) ((uint8_t)(df))
 
-static bool dfIsValid(uint32_t df)
+static bool is_dfValid(uint32_t df)
 {
     uint8_t kind = REPORT_KIND(df);
     uint8_t len  = REPORT_LEN(df);
     return kind > UC_HID_NIL_REPORT && kind < UC_HID_MAX_REPORT && len < UC_HID_MAX_REPORT_SIZE;
 }
 
-static UcHidReport *rAllocate(uint32_t df)
+static UcHidReport *alloc_report(uint32_t df)
 {
     UcHidReport *r = NULL;
 
@@ -99,7 +99,7 @@ static UcHidReport *rAllocate(uint32_t df)
 
     if ( r != NULL )
     {
-        __Assert( ucIsUnlisted_Event(&r->e) );
+        __Assert( is_unlistedEvent(&r->e) );
 
         r->id = REPORT_ID(df);
         r->length = REPORT_LEN(df);
@@ -110,7 +110,7 @@ static UcHidReport *rAllocate(uint32_t df)
     return r;
 }
 
-static uint32_t dfFindInDfs(uint8_t id, uint32_t *dfs)
+static uint32_t find_inDfs(uint8_t id, uint32_t *dfs)
 {
     for ( size_t i = 0; i < UC_HID_REPORTS_DEF_MAX_COUNT && dfs[i]; ++i )
     {
@@ -122,10 +122,10 @@ static uint32_t dfFindInDfs(uint8_t id, uint32_t *dfs)
     return 0;
 }
 
-static void dfAppendToDfs(uint32_t df,uint32_t *dfs)
+static void append_toDfs(uint32_t df,uint32_t *dfs)
 {
     size_t i = 0;
-    __Assert( dfIsValid(df) );
+    __Assert( is_dfValid(df) );
 
     while ( i < UC_HID_REPORTS_DEF_MAX_COUNT && dfs[i] ) ++i;
 
@@ -136,32 +136,32 @@ static void dfAppendToDfs(uint32_t df,uint32_t *dfs)
     }
 }
 
-static uint32_t dfFind(uint8_t id, UcHidReportKind kind)
+static uint32_t find_df(uint8_t id, UcHidReportKind kind)
 {
     switch (kind)
     {
-        case UC_HID_INPUT_REPORT: return dfFindInDfs(id,dfInrep);
-        case UC_HID_OUTPUT_REPORT: return dfFindInDfs(id,dfOutrep);
-        case UC_HID_FEATURE_REPORT: return dfFindInDfs(id,dfFerep);
+        case UC_HID_INPUT_REPORT: return find_inDfs(id,dfInrep);
+        case UC_HID_OUTPUT_REPORT: return find_inDfs(id,dfOutrep);
+        case UC_HID_FEATURE_REPORT: return find_inDfs(id,dfFerep);
         default: __Assert_S(0, "unknown type of report");
     }
 
     return 0;
 }
 
-static void dfAppend(uint32_t df)
+static void append_df(uint32_t df)
 {
     uint8_t kind = (uint8_t)(df >> 24);
     switch (kind)
     {
-        case UC_HID_INPUT_REPORT: dfAppendToDfs(df,dfInrep); return;
-        case UC_HID_OUTPUT_REPORT: dfAppendToDfs(df,dfOutrep); return;
-        case UC_HID_FEATURE_REPORT: dfAppendToDfs(df,dfFerep); return;
+        case UC_HID_INPUT_REPORT: append_toDfs(df,dfInrep); return;
+        case UC_HID_OUTPUT_REPORT: append_toDfs(df,dfOutrep); return;
+        case UC_HID_FEATURE_REPORT: append_toDfs(df,dfFerep); return;
         default: __Assert_S(0, "unknown type of report");
     }
 }
 
-static void peerListGet(pm_peer_id_t *peers, uint32_t *size)
+static void get_peerList(pm_peer_id_t *peers, uint32_t *size)
 {
     pm_peer_id_t id;
     uint32_t     toCopy;
@@ -179,11 +179,11 @@ static void peerListGet(pm_peer_id_t *peers, uint32_t *size)
     }
 }
 
-static void startAdvertising(void)
+static void start_advertising(void)
 {
     memset(whitelistPeers, PM_PEER_ID_INVALID, sizeof(whitelistPeers));
     whitelistPeerCnt = (sizeof(whitelistPeers) / sizeof(pm_peer_id_t));
-    peerListGet(whitelistPeers, &whitelistPeerCnt);
+    get_peerList(whitelistPeers, &whitelistPeerCnt);
     whitelistPeerCnt = 0;
     __Nrf_Success pm_whitelist_set(whitelistPeers, whitelistPeerCnt);
     __Nrf_Supported pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
@@ -192,7 +192,7 @@ static void startAdvertising(void)
     __Nrf_Success ble_advertising_start(BLE_ADV_MODE_FAST);
 }
 
-static void initGapParams(const char *deviceName)
+static void init_gapParams(const char *deviceName)
 {
     ble_gap_conn_params_t   gapConnParams = {0,};
     ble_gap_conn_sec_mode_t secMode;
@@ -210,7 +210,7 @@ static void initGapParams(const char *deviceName)
     __Nrf_Success sd_ble_gap_ppcp_set(&gapConnParams);
 }
 
-static void initDis(uint16_t vendorId, uint16_t prodId, const char *vendorName)
+static void init_dis(uint16_t vendorId, uint16_t prodId, const char *vendorName)
 {
     ble_dis_init_t   disInitObj = {0,};
     ble_dis_pnp_id_t pnpId;
@@ -229,7 +229,7 @@ static void initDis(uint16_t vendorId, uint16_t prodId, const char *vendorName)
     __Nrf_Success ble_dis_init(&disInitObj);
 }
 
-static void initBas(void)
+static void init_bas(void)
 {
     ble_bas_init_t basInitObj = {0,};
 
@@ -246,9 +246,9 @@ static void initBas(void)
     __Nrf_Success ble_bas_init(&bas, &basInitObj);
 }
 
-static void pmEvtHandler(pm_evt_t const *e);
+static void on_pmEevent(pm_evt_t const *e);
 
-static void initPeerManager(void)
+static void init_peerManager(void)
 {
     ble_gap_sec_params_t secParam = {0,};
 
@@ -269,13 +269,13 @@ static void initPeerManager(void)
     secParam.kdist_peer.id  = 1;
 
     __Nrf_Success pm_sec_params_set(&secParam);
-    __Nrf_Success pm_register(pmEvtHandler);
+    __Nrf_Success pm_register(on_pmEevent);
 
 }
 
-static void advEvtHandler(ble_adv_evt_t ble_adv_evt);
+static void on_advertisingEevent(ble_adv_evt_t ble_adv_evt);
 
-static void initAdvertising(void)
+static void init_advertising(void)
 {
     uint8_t                flags;
     ble_advdata_t          advdata;
@@ -305,11 +305,11 @@ static void initAdvertising(void)
     __Nrf_Success  ble_advertising_init(&advdata,
                                         NULL,
                                         &options,
-                                        advEvtHandler,
-                                        ucNrfErrorHandler);
+                                        on_advertisingEevent,
+                                        on_nrfError);
 }
 
-static void initConnParams(void)
+static void init_connParams(void)
 {
     ble_conn_params_init_t cp = {0,};
 
@@ -320,14 +320,14 @@ static void initConnParams(void)
     cp.start_on_notify_cccd_handle    = BLE_GATT_HANDLE_INVALID;
     cp.disconnect_on_fail             = false;
     cp.evt_handler                    = NULL;
-    cp.error_handler                  = ucNrfErrorHandler;
+    cp.error_handler                  = on_nrfError;
 
     __Nrf_Success ble_conn_params_init(&cp);
 }
 
-static void hidsEvtHandler(ble_hids_t *hids, ble_hids_evt_t *e);
+static void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e);
 
-static void initHids()
+static void init_hids()
 {
     ble_hids_init_t             hidsInitObj = {0,};
     ble_hids_inp_rep_init_t     inrep[UC_HID_REPORTS_DEF_MAX_COUNT] = {0,};
@@ -375,8 +375,8 @@ static void initHids()
 
     hidInfoFlags = HID_INFO_FLAG_REMOTE_WAKE_MSK | HID_INFO_FLAG_NORMALLY_CONNECTABLE_MSK;
 
-    hidsInitObj.evt_handler                    = hidsEvtHandler;
-    hidsInitObj.error_handler                  = ucNrfErrorHandler;
+    hidsInitObj.evt_handler                    = on_hidsEvent;
+    hidsInitObj.error_handler                  = on_nrfError;
     hidsInitObj.is_kb                          = false;
     hidsInitObj.is_mouse                       = false;
     hidsInitObj.inp_rep_count                  = inrepCount;
@@ -447,10 +447,10 @@ static void initHids()
     __Nrf_Success ble_hids_init(&hids,&hidsInitObj);
 }
 
-static void bleDispatch(ble_evt_t *e);
-static void sysDispatch(uint32_t e);
+static void dispatch_bleEvent(ble_evt_t *e);
+static void dispatch_sysEvent(uint32_t e);
 
-void ucSetup_Hid(
+void setup_hid(
     const char *deviceName,
     const char *vendorName,
     uint16_t vendorId,
@@ -465,8 +465,8 @@ void ucSetup_Hid(
     for ( uint32_t i = 0; i < count; ++i )
     {
         uint32_t df = va_arg(ap,uint32_t);
-        __Assert( dfIsValid(df) );
-        dfAppend(df);
+        __Assert( is_dfValid(df) );
+        append_df(df);
     }
 
     va_end(ap);
@@ -481,41 +481,41 @@ void ucSetup_Hid(
 #endif
 
     __Nrf_Success softdevice_enable(&bleEnableParams);
-    __Nrf_Success softdevice_ble_evt_handler_set(bleDispatch);
-    __Nrf_Success softdevice_sys_evt_handler_set(sysDispatch);
+    __Nrf_Success softdevice_ble_evt_handler_set(dispatch_bleEvent);
+    __Nrf_Success softdevice_sys_evt_handler_set(dispatch_sysEvent);
 
-    initPeerManager();
-    initGapParams(deviceName);
-    initBas();
-    initDis(vendorId,productId,vendorName);
-    initHids();
-    initConnParams();
-    initAdvertising();
-    startAdvertising();
+    init_peerManager();
+    init_gapParams(deviceName);
+    init_bas();
+    init_dis(vendorId,productId,vendorName);
+    init_hids();
+    init_connParams();
+    init_advertising();
+    start_advertising();
 }
 
-UcHidError ucSend_HidReport(UcHidReport *report)
+UcHidError send_hidReport(UcHidReport *report)
 {
     return UC_HID_SUCCESS;
 }
 
-UcHidReport *ucAlloc_HidInputReport(uint8_t id)
+UcHidReport *alloc_hidInputReport(uint8_t id)
 {
     uint32_t df;
-    if (( df = dfFind(id,UC_HID_INPUT_REPORT) ))
-        return rAllocate(df);
+    if (( df = find_df(id,UC_HID_INPUT_REPORT) ))
+        return alloc_report(df);
     return NULL;
 }
 
-UcHidReport *ucAlloc_HidFeatureReport(uint8_t id)
+UcHidReport *aAlloc_hidFeatureReport(uint8_t id)
 {
     uint32_t df;
-    if (( df = dfFind(id,UC_HID_FEATURE_REPORT) ))
-        return rAllocate(df);
+    if (( df = find_df(id,UC_HID_FEATURE_REPORT) ))
+        return alloc_report(df);
     return NULL;
 }
 
-UcHidReport *ucGetIf_HidOutputReport(UcEvent *e)
+UcHidReport *getIf_hidOutputReport(UcEvent *e)
 {
     if ( e >= &rHeap[0].e && e <= &rHeap[UC_HID_REPORTS_HEAP_MAX_COUNT-1].e )
     {
@@ -526,7 +526,7 @@ UcHidReport *ucGetIf_HidOutputReport(UcEvent *e)
     return NULL;
 }
 
-UcHidReport *ucGetIf_HidFeatureReport(UcEvent *e)
+UcHidReport *getIf_hidFeatureReport(UcEvent *e)
 {
     if ( e >= &rHeap[0].e && e <= &rHeap[UC_HID_REPORTS_HEAP_MAX_COUNT-1].e )
     {
@@ -537,7 +537,7 @@ UcHidReport *ucGetIf_HidFeatureReport(UcEvent *e)
     return NULL;
 }
 
-void ucUpdate_BatteryLevel(uint8_t level)
+void update_batteryLevel(uint8_t level)
 {
     uint32_t err = ble_bas_battery_level_update(&bas, level);
     if ((err != NRF_SUCCESS) &&
@@ -548,29 +548,29 @@ void ucUpdate_BatteryLevel(uint8_t level)
         __Nrf_Success err;
 }
 
-static void bleEvtHandler(const ble_evt_t *e);
+static void on_bleEvent(const ble_evt_t *e);
 
-void bleDispatch(ble_evt_t *e)
+void dispatch_bleEvent(ble_evt_t *e)
 {
     ble_conn_state_on_ble_evt(e);
     pm_on_ble_evt(e);
-    bleEvtHandler(e);
+    on_bleEvent(e);
     ble_advertising_on_ble_evt(e);
     ble_conn_params_on_ble_evt(e);
     ble_hids_on_ble_evt(&hids,e);
     ble_bas_on_ble_evt(&bas,e);
 }
 
-void sysDispatch(uint32_t e)
+void dispatch_sysEvent(uint32_t e)
 {
     fs_sys_event_handler(e);
     ble_advertising_on_sys_evt(e);
 }
 
-void pmEvtHandler(const pm_evt_t *e)
+void on_pmEevent(const pm_evt_t *e)
 {
     uint32_t err;
-    INFO("pmEvtHandler => %?",$u(e->evt_id));
+    INFO("on_pmEevent => %?",$u(e->evt_id));
     switch ( e->evt_id )
     {
         case PM_EVT_BONDED_PEER_CONNECTED:
@@ -647,11 +647,11 @@ void pmEvtHandler(const pm_evt_t *e)
     }
 }
 
-void advEvtHandler(ble_adv_evt_t e)
+void on_advertisingEevent(ble_adv_evt_t e)
 {
     uint32_t err;
 
-    INFO("advEvtHandler => %?",$u(e));
+    INFO("on_advertisingEevent => %?",$u(e));
     switch ( e )
     {
         case BLE_ADV_EVT_DIRECTED:
@@ -704,9 +704,9 @@ void advEvtHandler(ble_adv_evt_t e)
     }
 }
 
-void hidsEvtHandler(ble_hids_t *hids, ble_hids_evt_t *e)
+void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e)
 {
-    INFO("hidsEvtHandler => %?",$u(e->evt_type));
+    INFO("on_hidsEvent => %?",$u(e->evt_type));
     switch ( e->evt_type )
     {
         case BLE_HIDS_EVT_BOOT_MODE_ENTERED: break;
@@ -725,9 +725,9 @@ void hidsEvtHandler(ble_hids_t *hids, ble_hids_evt_t *e)
     }
 }
 
-void bleEvtHandler(const ble_evt_t *e)
+void on_bleEvent(const ble_evt_t *e)
 {
-    INFO("bleEvtHandler => %?",$u(e->header.evt_id));
+    INFO("on_bleEvent => %?",$u(e->header.evt_id));
     switch ( e->header.evt_id )
     {
         case BLE_GAP_EVT_CONNECTED:
