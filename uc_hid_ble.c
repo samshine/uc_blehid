@@ -185,11 +185,11 @@ static void start_advertising(void)
     whitelistPeerCnt = (sizeof(whitelistPeers) / sizeof(pm_peer_id_t));
     get_peerList(whitelistPeers, &whitelistPeerCnt);
     whitelistPeerCnt = 0;
-    __Nrf_Success pm_whitelist_set(whitelistPeers, whitelistPeerCnt);
-    __Nrf_Supported pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
+    __Success pm_whitelist_set(whitelistPeers, whitelistPeerCnt);
+    __Supported pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
     isWlChanged = false;
     (void)isWlChanged;
-    __Nrf_Success ble_advertising_start(BLE_ADV_MODE_FAST);
+    __Success ble_advertising_start(BLE_ADV_MODE_FAST);
 }
 
 static void init_gapParams(const char *deviceName)
@@ -199,15 +199,15 @@ static void init_gapParams(const char *deviceName)
 
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&secMode);
 
-    __Nrf_Success sd_ble_gap_device_name_set(&secMode,(const uint8_t*)deviceName,strlen(deviceName));
-    __Nrf_Success sd_ble_gap_appearance_set(BLE_APPEARANCE_GENERIC_HID);
+    __Success sd_ble_gap_device_name_set(&secMode,(const uint8_t*)deviceName,strlen(deviceName));
+    __Success sd_ble_gap_appearance_set(BLE_APPEARANCE_GENERIC_HID);
 
     gapConnParams.min_conn_interval = MIN_CONN_INTERVAL;
     gapConnParams.max_conn_interval = MAX_CONN_INTERVAL;
     gapConnParams.slave_latency     = SLAVE_LATENCY;
     gapConnParams.conn_sup_timeout  = CONN_SUP_TIMEOUT;
 
-    __Nrf_Success sd_ble_gap_ppcp_set(&gapConnParams);
+    __Success sd_ble_gap_ppcp_set(&gapConnParams);
 }
 
 static void init_dis(uint16_t vendorId, uint16_t prodId, const char *vendorName)
@@ -226,7 +226,7 @@ static void init_dis(uint16_t vendorId, uint16_t prodId, const char *vendorName)
     BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&disInitObj.dis_attr_md.read_perm);
     BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&disInitObj.dis_attr_md.write_perm);
 
-    __Nrf_Success ble_dis_init(&disInitObj);
+    __Success ble_dis_init(&disInitObj);
 }
 
 static void init_bas(void)
@@ -243,7 +243,7 @@ static void init_bas(void)
     BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&basInitObj.battery_level_char_attr_md.write_perm);
     BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&basInitObj.battery_level_report_read_perm);
 
-    __Nrf_Success ble_bas_init(&bas, &basInitObj);
+    __Success ble_bas_init(&bas, &basInitObj);
 }
 
 static void on_pmEevent(pm_evt_t const *e);
@@ -252,7 +252,7 @@ static void init_peerManager(void)
 {
     ble_gap_sec_params_t secParam = {0,};
 
-    __Nrf_Success pm_init();
+    __Success pm_init();
     pm_peers_delete();
 
     secParam.bond           = SEC_PARAM_BOND;
@@ -268,8 +268,8 @@ static void init_peerManager(void)
     secParam.kdist_peer.enc = 1;
     secParam.kdist_peer.id  = 1;
 
-    __Nrf_Success pm_sec_params_set(&secParam);
-    __Nrf_Success pm_register(on_pmEevent);
+    __Success pm_sec_params_set(&secParam);
+    __Success pm_register(on_pmEevent);
 
 }
 
@@ -302,7 +302,7 @@ static void init_advertising(void)
     options.ble_adv_slow_interval          = APP_ADV_SLOW_INTERVAL;
     options.ble_adv_slow_timeout           = APP_ADV_SLOW_TIMEOUT;
 
-    __Nrf_Success  ble_advertising_init(&advdata,
+    __Success  ble_advertising_init(&advdata,
                                         NULL,
                                         &options,
                                         on_advertisingEevent,
@@ -322,7 +322,7 @@ static void init_connParams(void)
     cp.evt_handler                    = NULL;
     cp.error_handler                  = on_nrfError;
 
-    __Nrf_Success ble_conn_params_init(&cp);
+    __Success ble_conn_params_init(&cp);
 }
 
 static void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e);
@@ -444,7 +444,7 @@ static void init_hids()
     reportMap[len++] = 0xc0;
     hidsInitObj.rep_map.data_len = len;
 
-    __Nrf_Success ble_hids_init(&hids,&hidsInitObj);
+    __Success ble_hids_init(&hids,&hidsInitObj);
 }
 
 static void dispatch_bleEvent(ble_evt_t *e);
@@ -472,7 +472,7 @@ void setup_hid(
     va_end(ap);
 
     ble_enable_params_t bleEnableParams;
-    __Nrf_Success softdevice_enable_get_default_config(CENTRAL_LINK_COUNT,
+    __Success softdevice_enable_get_default_config(CENTRAL_LINK_COUNT,
                                                     PERIPHERAL_LINK_COUNT,
                                                     &bleEnableParams);
     CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT, PERIPHERAL_LINK_COUNT);
@@ -480,9 +480,9 @@ void setup_hid(
     bleEnableParams.gatt_enable_params.att_mtu = NRF_BLE_MAX_MTU_SIZE;
 #endif
 
-    __Nrf_Success softdevice_enable(&bleEnableParams);
-    __Nrf_Success softdevice_ble_evt_handler_set(dispatch_bleEvent);
-    __Nrf_Success softdevice_sys_evt_handler_set(dispatch_sysEvent);
+    __Success softdevice_enable(&bleEnableParams);
+    __Success softdevice_ble_evt_handler_set(dispatch_bleEvent);
+    __Success softdevice_sys_evt_handler_set(dispatch_sysEvent);
 
     init_peerManager();
     init_gapParams(deviceName);
@@ -545,7 +545,7 @@ void update_batteryLevel(uint8_t level)
         (err != BLE_ERROR_NO_TX_PACKETS) &&
         (err != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
        )
-        __Nrf_Success err;
+        __Success err;
 }
 
 static void on_bleEvent(const ble_evt_t *e);
@@ -613,7 +613,7 @@ void on_pmEevent(const pm_evt_t *e)
             if ( err == FDS_ERR_BUSY || err == FDS_ERR_NO_SPACE_IN_QUEUES )
                 ;// retry
             else
-                __Nrf_Success err;
+                __Success err;
             break;
 
         case PM_EVT_PEERS_DELETE_SUCCEEDED:            
@@ -624,16 +624,16 @@ void on_pmEevent(const pm_evt_t *e)
             break;
 
         case PM_EVT_PEER_DATA_UPDATE_FAILED:
-            __Nrf_Success e->params.peer_data_update_failed.error;
+            __Success e->params.peer_data_update_failed.error;
             break;
         case PM_EVT_PEER_DELETE_FAILED:
-            __Nrf_Success e->params.peer_delete_failed.error;
+            __Success e->params.peer_delete_failed.error;
             break;
         case PM_EVT_PEERS_DELETE_FAILED:
-            __Nrf_Success e->params.peers_delete_failed_evt.error;
+            __Success e->params.peers_delete_failed_evt.error;
             break;
         case PM_EVT_ERROR_UNEXPECTED:
-            __Nrf_Success e->params.error_unexpected.error;
+            __Success e->params.error_unexpected.error;
             break;
 
         case PM_EVT_CONN_SEC_START:
@@ -668,7 +668,7 @@ void on_advertisingEevent(ble_adv_evt_t e)
             break;
         case BLE_ADV_EVT_IDLE:
             INFO("evt => BLE_ADV_EVT_IDLE");
-            //sleep_mode_enter();
+            start_advertising();
             break;
         case BLE_ADV_EVT_WHITELIST_REQUEST:
             INFO("evt => BLE_ADV_EVT_WHITELIST_REQUEST");
@@ -677,8 +677,8 @@ void on_advertisingEevent(ble_adv_evt_t e)
             ble_gap_irk_t  irks[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
             uint32_t       addrCnt = BLE_GAP_WHITELIST_ADDR_MAX_COUNT;
             uint32_t       irkCnt  = BLE_GAP_WHITELIST_ADDR_MAX_COUNT;
-            __Nrf_Success pm_whitelist_get(addrs,&addrCnt,irks,&irkCnt);
-            __Nrf_Success ble_advertising_whitelist_reply(addrs,addrCnt,irks,irkCnt);
+            __Success pm_whitelist_get(addrs,&addrCnt,irks,&irkCnt);
+            __Success ble_advertising_whitelist_reply(addrs,addrCnt,irks,irkCnt);
             break;
         }
 
@@ -692,9 +692,9 @@ void on_advertisingEevent(ble_adv_evt_t e)
                 err = pm_peer_data_bonding_load(peerId,&p);
                 if ( err != NRF_ERROR_NOT_FOUND )
                 {
-                    __Nrf_Success err;
+                    __Success err;
                     ble_gap_addr_t *a = &p.peer_ble_id.id_addr_info;
-                    __Nrf_Success ble_advertising_peer_addr_reply(a);
+                    __Success ble_advertising_peer_addr_reply(a);
                 }
             }
             break;
@@ -746,26 +746,26 @@ void on_bleEvent(const ble_evt_t *e)
 
             connHandle = BLE_CONN_HANDLE_INVALID;
 
-            __Nrf_Success pm_whitelist_set(whitelistPeers,whitelistPeerCnt);
-            __Nrf_Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
+            __Success pm_whitelist_set(whitelistPeers,whitelistPeerCnt);
+            __Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
 
             isWlChanged = false;
             break;
 
         case BLE_GATTC_EVT_TIMEOUT:
             INFO("GATT client timeout");
-            __Nrf_Success sd_ble_gap_disconnect(e->evt.gattc_evt.conn_handle,
+            __Success sd_ble_gap_disconnect(e->evt.gattc_evt.conn_handle,
                                                 BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             break;
 
         case BLE_GATTS_EVT_TIMEOUT:
             INFO("GATT server timeout");
-            __Nrf_Success sd_ble_gap_disconnect(e->evt.gatts_evt.conn_handle,
+            __Success sd_ble_gap_disconnect(e->evt.gatts_evt.conn_handle,
                                                 BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             break;
 
         case BLE_EVT_USER_MEM_REQUEST:
-            __Nrf_Success sd_ble_user_mem_reply(connHandle, NULL);
+            __Success sd_ble_user_mem_reply(connHandle, NULL);
             break;
 
         case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
@@ -784,7 +784,7 @@ void on_bleEvent(const ble_evt_t *e)
                      reply.type = req.type;
                      // feature not supported
                      reply.params.write.gatt_status = BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2;
-                     __Nrf_Success sd_ble_gatts_rw_authorize_reply(e->evt.gatts_evt.conn_handle,&reply);
+                     __Success sd_ble_gatts_rw_authorize_reply(e->evt.gatts_evt.conn_handle,&reply);
                 }
             }
 
@@ -793,7 +793,7 @@ void on_bleEvent(const ble_evt_t *e)
 
 #if (NRF_SD_BLE_API_VERSION == 3)
         case BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST:
-            __Nrf_Success sd_ble_gatts_exchange_mtu_reply(e->evt.gatts_evt.conn_handle,
+            __Success sd_ble_gatts_exchange_mtu_reply(e->evt.gatts_evt.conn_handle,
                                                        NRF_BLE_MAX_MTU_SIZE);
             break;
 #endif
