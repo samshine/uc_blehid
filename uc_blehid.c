@@ -1,5 +1,6 @@
 
-#include <~sudachen/uc_hid/import.h>
+#include <~sudachen/uc_blehid/import.h>
+
 #include <stdarg.h>
 #include <ble_srv_common.h>
 #include <ble_advertising.h>
@@ -18,9 +19,9 @@
 
 #define INFO(...) PRINT("uc_hid:" __VA_ARGS__)
 
-#define UC_HID_REPORTS_HEAP_MAX_COUNT       10+3
-#define UC_HID_REPORTS_DEF_MAX_COUNT        5
-#define UC_HID_REPORT_MAP_MAX_LENGTH        128
+#define BLEHID_REPORTS_HEAP_MAX_COUNT       10+3
+#define BLEHID_REPORTS_DEF_MAX_COUNT        5
+#define BLEHID_REPORT_MAP_MAX_LENGTH        128
 
 #define CENTRAL_LINK_COUNT                  0
 #define PERIPHERAL_LINK_COUNT               1
@@ -47,12 +48,12 @@
 #define SEC_PARAM_MIN_KEY_SIZE              7
 #define SEC_PARAM_MAX_KEY_SIZE              16
 
-static uint8_t      reportMap[UC_HID_REPORT_MAP_MAX_LENGTH];
+static uint8_t      reportMap[BLEHID_REPORT_MAP_MAX_LENGTH];
 
-static uint32_t     dfInrep[UC_HID_REPORTS_DEF_MAX_COUNT] = {0,};
-static uint32_t     dfOutrep[UC_HID_REPORTS_DEF_MAX_COUNT] = {0,};
-static uint32_t     dfFerep[UC_HID_REPORTS_DEF_MAX_COUNT] = {0,};
-static UcHidReport  rHeap[UC_HID_REPORTS_HEAP_MAX_COUNT];
+static uint32_t     dfInrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
+static uint32_t     dfOutrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
+static uint32_t     dfFerep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
+static BleHidReport  rHeap[BLEHID_REPORTS_HEAP_MAX_COUNT];
 
 static ble_hids_t   hids;
 static ble_bas_t    bas;
@@ -78,21 +79,21 @@ static bool is_dfValid(uint32_t df)
 {
     uint8_t kind = REPORT_KIND(df);
     uint8_t len  = REPORT_LEN(df);
-    return kind > UC_HID_NIL_REPORT && kind < UC_HID_MAX_REPORT && len < UC_HID_MAX_REPORT_SIZE;
+    return kind > BLEHID_NIL_REPORT && kind < BLEHID_MAX_REPORT && len < BLEHID_MAX_REPORT_SIZE;
 }
 
-static UcHidReport *alloc_report(uint32_t df)
+static BleHidReport *alloc_report(uint32_t df)
 {
-    UcHidReport *r = NULL;
+    BleHidReport *r = NULL;
 
     __Critical
     {
-        for ( size_t i = 0; i < UC_HID_REPORTS_HEAP_MAX_COUNT; ++i )
+        for ( size_t i = 0; i < BLEHID_REPORTS_HEAP_MAX_COUNT; ++i )
         {
-            if ( rHeap[i].kind == UC_HID_NIL_REPORT )\
+            if ( rHeap[i].kind == BLEHID_NIL_REPORT )\
             {
                 r = &rHeap[i];
-                r->kind = (UcHidReportKind)REPORT_KIND(df);
+                r->kind = (BleHidReportKind)REPORT_KIND(df);
             }
         }
     }
@@ -112,7 +113,7 @@ static UcHidReport *alloc_report(uint32_t df)
 
 static uint32_t find_inDfs(uint8_t id, uint32_t *dfs)
 {
-    for ( size_t i = 0; i < UC_HID_REPORTS_DEF_MAX_COUNT && dfs[i]; ++i )
+    for ( size_t i = 0; i < BLEHID_REPORTS_DEF_MAX_COUNT && dfs[i]; ++i )
     {
         uint32_t df = dfs[i];
         if ( REPORT_ID(df) == id )
@@ -127,22 +128,22 @@ static void append_toDfs(uint32_t df,uint32_t *dfs)
     size_t i = 0;
     __Assert( is_dfValid(df) );
 
-    while ( i < UC_HID_REPORTS_DEF_MAX_COUNT && dfs[i] ) ++i;
+    while ( i < BLEHID_REPORTS_DEF_MAX_COUNT && dfs[i] ) ++i;
 
-    __Assert_S( i < UC_HID_REPORTS_DEF_MAX_COUNT, "array of report definitions is full" );
-    if ( i < UC_HID_REPORTS_DEF_MAX_COUNT )
+    __Assert_S( i < BLEHID_REPORTS_DEF_MAX_COUNT, "array of report definitions is full" );
+    if ( i < BLEHID_REPORTS_DEF_MAX_COUNT )
     {
         dfs[i] = df;
     }
 }
 
-static uint32_t find_df(uint8_t id, UcHidReportKind kind)
+static uint32_t find_df(uint8_t id, BleHidReportKind kind)
 {
     switch (kind)
     {
-        case UC_HID_INPUT_REPORT: return find_inDfs(id,dfInrep);
-        case UC_HID_OUTPUT_REPORT: return find_inDfs(id,dfOutrep);
-        case UC_HID_FEATURE_REPORT: return find_inDfs(id,dfFerep);
+        case BLEHID_INPUT_REPORT: return find_inDfs(id,dfInrep);
+        case BLEHID_OUTPUT_REPORT: return find_inDfs(id,dfOutrep);
+        case BLEHID_FEATURE_REPORT: return find_inDfs(id,dfFerep);
         default: __Assert_S(0, "unknown type of report");
     }
 
@@ -154,9 +155,9 @@ static void append_df(uint32_t df)
     uint8_t kind = (uint8_t)(df >> 24);
     switch (kind)
     {
-        case UC_HID_INPUT_REPORT: append_toDfs(df,dfInrep); return;
-        case UC_HID_OUTPUT_REPORT: append_toDfs(df,dfOutrep); return;
-        case UC_HID_FEATURE_REPORT: append_toDfs(df,dfFerep); return;
+        case BLEHID_INPUT_REPORT: append_toDfs(df,dfInrep); return;
+        case BLEHID_OUTPUT_REPORT: append_toDfs(df,dfOutrep); return;
+        case BLEHID_FEATURE_REPORT: append_toDfs(df,dfFerep); return;
         default: __Assert_S(0, "unknown type of report");
     }
 }
@@ -330,15 +331,15 @@ static void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e);
 static void init_hids()
 {
     ble_hids_init_t             hidsInitObj = {0,};
-    ble_hids_inp_rep_init_t     inrep[UC_HID_REPORTS_DEF_MAX_COUNT] = {0,};
+    ble_hids_inp_rep_init_t     inrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
     size_t                      inrepCount;
-    ble_hids_outp_rep_init_t    outrep[UC_HID_REPORTS_DEF_MAX_COUNT] = {0,};
+    ble_hids_outp_rep_init_t    outrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
     size_t                      outrepCount;
-    ble_hids_feature_rep_init_t ferep[UC_HID_REPORTS_DEF_MAX_COUNT]  = {0,};
+    ble_hids_feature_rep_init_t ferep[BLEHID_REPORTS_DEF_MAX_COUNT]  = {0,};
     size_t                      ferepCount;
     uint8_t                     hidInfoFlags;
 
-    for (inrepCount = 0; inrepCount < UC_HID_REPORTS_DEF_MAX_COUNT && dfInrep[inrepCount]; ++inrepCount )
+    for (inrepCount = 0; inrepCount < BLEHID_REPORTS_DEF_MAX_COUNT && dfInrep[inrepCount]; ++inrepCount )
     {
         uint32_t df = dfInrep[inrepCount];
         ble_hids_inp_rep_init_t *r = inrep + inrepCount;
@@ -350,7 +351,7 @@ static void init_hids()
         BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&r->security_mode.write_perm);
     }
 
-    for (outrepCount = 0; outrepCount < UC_HID_REPORTS_DEF_MAX_COUNT && dfInrep[outrepCount]; ++outrepCount )
+    for (outrepCount = 0; outrepCount < BLEHID_REPORTS_DEF_MAX_COUNT && dfInrep[outrepCount]; ++outrepCount )
     {
         uint32_t df = dfOutrep[outrepCount];
         ble_hids_outp_rep_init_t *r = outrep + outrepCount;
@@ -361,7 +362,7 @@ static void init_hids()
         BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&r->security_mode.write_perm);
     }
 
-    for (ferepCount = 0; ferepCount < UC_HID_REPORTS_DEF_MAX_COUNT && dfFerep[ferepCount]; ++ferepCount )
+    for (ferepCount = 0; ferepCount < BLEHID_REPORTS_DEF_MAX_COUNT && dfFerep[ferepCount]; ++ferepCount )
     {
         uint32_t df = dfFerep[ferepCount];
         ble_hids_feature_rep_init_t *r = ferep + ferepCount;
@@ -412,18 +413,18 @@ static void init_hids()
 
     for ( size_t q = 0; q < 3; ++q)
     {
-        for ( size_t i = 0; i < UC_HID_REPORTS_DEF_MAX_COUNT && dfs[q][i]; ++i )
+        for ( size_t i = 0; i < BLEHID_REPORTS_DEF_MAX_COUNT && dfs[q][i]; ++i )
         {
             uint32_t df = dfs[q][i];
 
             if ( REPORT_ID(df) )
             {
-                __Assert(len+2+13 < UC_HID_REPORT_MAP_MAX_LENGTH);
+                __Assert(len+2+13 < BLEHID_REPORT_MAP_MAX_LENGTH);
                 reportMap[len++] = 0x85; // Report ID
                 reportMap[len++] = REPORT_ID(df);
             }
 
-            __Assert(len+13 < UC_HID_REPORT_MAP_MAX_LENGTH);
+            __Assert(len+13 < BLEHID_REPORT_MAP_MAX_LENGTH);
             reportMap[len++] = 0x09;  // Vendor Usage
             reportMap[len++] = 0x01;
             reportMap[len++] = 0x15;  // LOGICAL_MINIMUM
@@ -440,7 +441,7 @@ static void init_hids()
         }
     }
 
-    __Assert(len < UC_HID_REPORT_MAP_MAX_LENGTH);
+    __Assert(len < BLEHID_REPORT_MAP_MAX_LENGTH);
     reportMap[len++] = 0xc0;
     hidsInitObj.rep_map.data_len = len;
 
@@ -450,7 +451,7 @@ static void init_hids()
 static void dispatch_bleEvent(ble_evt_t *e);
 static void dispatch_sysEvent(uint32_t e);
 
-void setup_hid(
+void setup_blehid(
     const char *deviceName,
     const char *vendorName,
     uint16_t vendorId,
@@ -494,44 +495,44 @@ void setup_hid(
     start_advertising();
 }
 
-UcHidError send_hidReport(UcHidReport *report)
+BleHidError send_blehidReport(BleHidReport *report)
 {
-    return UC_HID_SUCCESS;
+    return BLEHID_SUCCESS;
 }
 
-UcHidReport *alloc_hidInputReport(uint8_t id)
+BleHidReport *alloc_blehidInputReport(uint8_t id)
 {
     uint32_t df;
-    if (( df = find_df(id,UC_HID_INPUT_REPORT) ))
+    if (( df = find_df(id,BLEHID_INPUT_REPORT) ))
         return alloc_report(df);
     return NULL;
 }
 
-UcHidReport *aAlloc_hidFeatureReport(uint8_t id)
+BleHidReport *aAlloc_blehidFeatureReport(uint8_t id)
 {
     uint32_t df;
-    if (( df = find_df(id,UC_HID_FEATURE_REPORT) ))
+    if (( df = find_df(id,BLEHID_FEATURE_REPORT) ))
         return alloc_report(df);
     return NULL;
 }
 
-UcHidReport *getIf_hidOutputReport(UcEvent *e)
+BleHidReport *getIf_blehidOutputReport(Event *e)
 {
-    if ( e >= &rHeap[0].e && e <= &rHeap[UC_HID_REPORTS_HEAP_MAX_COUNT-1].e )
+    if ( e >= &rHeap[0].e && e <= &rHeap[BLEHID_REPORTS_HEAP_MAX_COUNT-1].e )
     {
-        UcHidReport *r = (UcHidReport *)e;
-        if ( r->kind == UC_HID_OUTPUT_REPORT )
+        BleHidReport *r = (BleHidReport *)e;
+        if ( r->kind == BLEHID_OUTPUT_REPORT )
             return r;
     }
     return NULL;
 }
 
-UcHidReport *getIf_hidFeatureReport(UcEvent *e)
+BleHidReport *getIf_blehidFeatureReport(Event *e)
 {
-    if ( e >= &rHeap[0].e && e <= &rHeap[UC_HID_REPORTS_HEAP_MAX_COUNT-1].e )
+    if ( e >= &rHeap[0].e && e <= &rHeap[BLEHID_REPORTS_HEAP_MAX_COUNT-1].e )
     {
-        UcHidReport *r = (UcHidReport *)e;
-        if ( r->kind == UC_HID_FEATURE_REPORT )
+        BleHidReport *r = (BleHidReport *)e;
+        if ( r->kind == BLEHID_FEATURE_REPORT )
             return r;
     }
     return NULL;
