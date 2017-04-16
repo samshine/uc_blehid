@@ -4,10 +4,8 @@
 #include <~sudachen/uc_irq/import.h>
 #include <~sudachen/uc_waitfor/import.h>
 
-#ifdef __nRF5x_UC__
-
-#ifndef SOFTDEVICE_PRESENT
-#error uc_hid module requires BLE Softdevice
+#if !defined(__nRF5x_UC__) || !defined(SOFTDEVICE_PRESENT)
+#error uc_blehid module requires BLE
 #endif
 
 #pragma uccm cflags+= -I "{NRF_BLE}/common"
@@ -87,13 +85,13 @@
 #endif\n\
 #ifndef FDS_OP_QUEUE_SIZE\n\
 #define FDS_OP_QUEUE_SIZE 4\n\
-#endif\n\
+#endif\n
 
-#else
-#error uc_blehid module requires BLE powered hardware
-#endif
 
-#pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_HID_REPORT ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
+#pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEHID_REPORT ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
+#define EVENT_IS_BLEHID_REPORT(e) ((e)->o.id == EVENT_ID_BLEHID_REPORT)
+#pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEADV_IDLE ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
+#define EVENT_IS_BLEADV_IDLE(e) ((e)->o.id == EVENT_ID_BLEADV_IDLE)
 
 typedef enum BleHidReportKind BleHidReportKind;
 enum BleHidReportKind {
@@ -106,7 +104,7 @@ enum BleHidReportKind {
 
 enum
 {
-    BLEHID_MAX_REPORT_SIZE = 64,
+    BLEHID_MAX_REPORT_SIZE = 22,
 };
 
 #define BLEHID_REPORT(Kind,Length,Id,...) \
@@ -121,7 +119,6 @@ enum
 typedef struct BleHidReport BleHidReport;
 struct BleHidReport
 {
-    Event e;
     BleHidReportKind kind;
     uint8_t length;
     uint8_t id;
@@ -144,12 +141,9 @@ void setup_blehid(
     uint32_t count,
     ...);
 
-BleHidError   send_blehidReport(struct BleHidReport *report);
-BleHidReport *alloc_blehidInputReport(uint8_t id);
-BleHidReport *alloc_blehidFeatureReport(uint8_t id);
-BleHidReport *getIf_blehidOutputReport(struct Event *e);
-BleHidReport *getIf_blehidFeatureReport(struct Event *e);
-
-#ifdef __nRF5x_UC__
-void erase_blehidBonds(void);
-#endif
+BleHidReport *getIf_blehidReport(Event* e);
+BleHidReport *use_blehidReport(uint8_t id);
+void send_blehidReport(void);
+void erase_bleBonds(void);
+void start_blehidAdvertising(void);
+void update_blehidBatteryLevel(uint8_t level);
