@@ -54,6 +54,12 @@ static Event advIdle = {
     {.id = EVENT_ID_BLEADV_IDLE, .kind = ACTIVATE_BY_SIGNAL, .repeat = 0}
 };
 
+static Event evtConnect = {
+    NULL, NULL,
+    {0},
+    {.id = EVENT_ID_BLEHID_CONNECT, .kind = ACTIVATE_BY_SIGNAL, .repeat = 0}
+};
+
 static void on_evtReportComplete(Event*);
 
 static Event evtReport = {
@@ -90,7 +96,7 @@ struct { BleReportRing rng; BleHidReport r[BLEHID_OUTPUT_RING_COUNT-1]; } output
     .rng = { .cons = 0, .prod = 0, .count = BLEHID_OUTPUT_RING_COUNT }
 };
 
-BleReportRing* const rHeap[BLEHID_MAX_REPORT] = { NULL, &inputRing.rng, &outputRing.rng, &outputRing.rng };
+BleReportRing* const ringSet[BLEHID_MAX_REPORT] = { NULL, &inputRing.rng, &outputRing.rng, &outputRing.rng };
 
 static ble_hids_t hids;
 static ble_bas_t bas;
@@ -510,15 +516,11 @@ static BleHidReport *get_report(uint32_t df)
     BleHidReportKind kind = (BleHidReportKind)REPORT_KIND(df);
     __Assert(kind && kind < BLEHID_MAX_REPORT);
 
-    BleReportRing *rng = rHeap[kind];
+    BleReportRing *rng = ringSet[kind];
     __Assert(rng != NULL);
-
-    __Critical
-    {
-        __Assert(rng->prod >= rng->cons);
-        if ( (rng->prod - rng->cons) < rng->count )
-            r = &rng->r[rng->prod % rng->count];
-    }
+    __Assert(rng->prod >= rng->cons);
+    if ( (rng->prod - rng->cons) < rng->count )
+        r = &rng->r[rng->prod % rng->count];
 
     if ( r != NULL )
     {
@@ -569,17 +571,17 @@ static void on_inputRing(void)
 
 void send_blehidReport()
 {
-    complete_onRing(&inputRing.rng);
-    on_inputRing();
+    if ( is_blehidConnected() )
+    {
+        complete_onRing(&inputRing.rng);
+        on_inputRing();
+    }
 }
 
 static void on_outputRing(void)
 {
     if ( outputRing.rng.cons != outputRing.rng.prod )
-    {
-        list_event(&evtReport);
         signal_event(&evtReport);
-    }
 }
 
 static void complete_outputReport()
@@ -596,12 +598,8 @@ static void on_evtReportComplete(Event *e)
         rng = &outputRing.rng;
 
     __Assert( rng != NULL );
-
-    __Critical
-    {
-        __Assert(rng->prod > rng->cons);
-        ++rng->cons;
-    }
+    __Assert(rng->prod > rng->cons);
+    __Critical ++rng->cons;
 
     on_outputRing();
 }
@@ -638,6 +636,11 @@ void update_blehidBatteryLevel(uint8_t level)
         (err != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
        )
        __Success err;
+}
+
+bool is_blehidConnected(void)
+{
+    return connHandle != BLE_CONN_HANDLE_INVALID;
 }
 
 static void on_bleEvent(const ble_evt_t *e);
@@ -760,9 +763,7 @@ void on_advertisingEvent(ble_adv_evt_t e)
             break;
         case BLE_ADV_EVT_IDLE:
             INFO("evt => BLE_ADV_EVT_IDLE");
-            advIdle.t.is.signalled = true;
-            if ( is_unlistedEvent(&advIdle) )
-                list_event(&advIdle);
+            signal_event(&advIdle);
             break;
         case BLE_ADV_EVT_WHITELIST_REQUEST:
             INFO("evt => BLE_ADV_EVT_WHITELIST_REQUEST");
@@ -834,6 +835,7 @@ void on_bleEvent(const ble_evt_t *e)
         case BLE_GAP_EVT_CONNECTED:
             INFO("connected");
             connHandle = e->evt.gap_evt.conn_handle;
+            signal_event(&evtConnect);
             break;
 
         case BLE_EVT_TX_COMPLETE:
@@ -843,7 +845,7 @@ void on_bleEvent(const ble_evt_t *e)
         case BLE_GAP_EVT_DISCONNECTED:
             INFO("disconnected");
 
-            __Critical inputRing.rng.cons = inputRing.rng.prod = 0;
+            __Critical inputRing.rng.cons = inputRing.rng.prod;
 
             connHandle = BLE_CONN_HANDLE_INVALID;
 
@@ -851,6 +853,7 @@ void on_bleEvent(const ble_evt_t *e)
             __Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
 
             isWlChanged = false;
+            signal_event(&evtConnect);
             break;
 
         case BLE_GATTC_EVT_TIMEOUT:

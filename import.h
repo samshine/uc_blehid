@@ -72,7 +72,11 @@
 #define FS_OP_MAX_RETRIES 3\n\
 #endif\n\
 #ifndef FDS_VIRTUAL_PAGE_SIZE\n\
+#ifdef NRF51\n\
 #define FDS_VIRTUAL_PAGE_SIZE 256\n\
+#else\n\
+#define FDS_VIRTUAL_PAGE_SIZE 1024\n\
+#endif\n\
 #endif\n\
 #ifndef FDS_VIRTUAL_PAGES\n\
 #define FDS_VIRTUAL_PAGES 3\n\
@@ -87,11 +91,12 @@
 #define FDS_OP_QUEUE_SIZE 4\n\
 #endif\n
 
-
 #pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEHID_REPORT ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
 #define EVENT_IS_BLEHID_REPORT(e) ((e)->o.id == EVENT_ID_BLEHID_REPORT)
 #pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEADV_IDLE ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
 #define EVENT_IS_BLEADV_IDLE(e) ((e)->o.id == EVENT_ID_BLEADV_IDLE)
+#pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEHID_CONNECT ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
+#define EVENT_IS_BLEHID_CONNECT(e) ((e)->o.id == EVENT_ID_BLEHID_CONNECT)
 
 typedef enum BleHidReportKind BleHidReportKind;
 enum BleHidReportKind {
@@ -147,3 +152,4 @@ void send_blehidReport(void);
 void erase_bleBonds(void);
 void start_blehidAdvertising(void);
 void update_blehidBatteryLevel(uint8_t level);
+bool is_blehidConnected(void);
