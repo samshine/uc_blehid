@@ -57,7 +57,7 @@ static Event advIdle = {
 static Event evtConnect = {
     NULL, NULL,
     {0},
-    {.id = EVENT_ID_BLEHID_CONNECT, .kind = ACTIVATE_BY_SIGNAL, .repeat = 0}
+    {.id = EVENT_ID_BLEHID_CONNECT_CHANGED, .kind = ACTIVATE_BY_SIGNAL, .repeat = 0}
 };
 
 static void on_evtReportComplete(Event*);
@@ -106,6 +106,7 @@ static pm_peer_id_t peerId = PM_PEER_ID_INVALID;
 static pm_peer_id_t whitelistPeers[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
 static uint32_t whitelistPeerCnt;
 static bool isWlChanged = false;
+static bool isConnected = false;
 
 static ble_uuid_t advUuids[] = {
     {
@@ -205,7 +206,6 @@ void start_blehidAdvertising()
     __Supported pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
 
     isWlChanged = false;
-    (void)isWlChanged;
 
     __Success ble_advertising_start(BLE_ADV_MODE_FAST);
 }
@@ -266,12 +266,23 @@ static void init_bas(void)
 
 static void on_pmEevent(pm_evt_t const *e);
 
+void erase_blehidBonds(void)
+{
+    uint32_t err;
+    err = sd_ble_gap_adv_stop();
+    if ( err != NRF_ERROR_INVALID_STATE )
+        __Success err;
+    isWlChanged = false;
+    if ( connHandle != BLE_CONN_HANDLE_INVALID)
+        __Success sd_ble_gap_disconnect(connHandle,BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+    pm_peers_delete();
+}
+
 static void init_peerManager(void)
 {
     ble_gap_sec_params_t secParam = {0,};
 
     __Success pm_init();
-    pm_peers_delete();
 
     secParam.bond           = SEC_PARAM_BOND;
     secParam.mitm           = SEC_PARAM_MITM;
@@ -510,6 +521,15 @@ void setup_blehid(
     init_advertising();
 }
 
+BleHidReport *get_blehidReport()
+{
+    BleReportRing *rng = &inputRing.rng;
+    __Assert(rng->prod >= rng->cons);
+    if ( (rng->prod - rng->cons) < rng->count )
+        return &rng->r[rng->prod % rng->count];
+    return NULL;
+}
+
 static BleHidReport *get_report(uint32_t df)
 {
     BleHidReport *r = NULL;
@@ -560,12 +580,25 @@ static void on_inputRing(void)
 {
     if ( inputRing.rng.cons != inputRing.rng.prod )
     {
+        //INFO("inR: Cons: %? Prod: %? Count: %?", $u(inputRing.rng.cons), $u(inputRing.rng.prod), $u(inputRing.rng.count) );
         BleHidReport *r = inputRing.rng.r + (inputRing.rng.cons%inputRing.rng.count);
-        uint32_t err = ble_hids_inp_rep_send(&hids,r->id,r->length,r->bf);
-        if ( err != BLE_ERROR_NO_TX_PACKETS )
+        //INFO("inR: Id: %? Len: %? Kind: %?", $u(r->id), $u(r->length), $u(r->kind) );
+        uint32_t err = 0;
+        err = ble_hids_inp_rep_send(&hids,r->id,r->length,r->bf);
+        if ( err != BLE_ERROR_GATTS_SYS_ATTR_MISSING &&
+             err != BLE_ERROR_NO_TX_PACKETS &&
+             err != NRF_ERROR_INVALID_STATE &&
+             err != NRF_ERROR_FORBIDDEN )
             __Success err;
 
-        __Critical ++inputRing.rng.cons;
+        if ( err != NRF_SUCCESS )
+        {
+            __Print_On_Fail err;
+        }
+        else
+        {
+            __Critical ++inputRing.rng.cons;
+        }
     }
 }
 
@@ -586,6 +619,7 @@ static void on_outputRing(void)
 
 static void complete_outputReport()
 {
+    INFO("OtR: Cons: %? Prod: %? Count: %?", $u(outputRing.rng.cons), $u(outputRing.rng.prod), $u(outputRing.rng.count) );
     complete_onRing(&outputRing.rng);
     on_outputRing();
 }
@@ -604,7 +638,7 @@ static void on_evtReportComplete(Event *e)
     on_outputRing();
 }
 
-BleHidReport *use_blehidReport(uint8_t id)
+BleHidReport *use_blehidInputReport(uint8_t id)
 {
     uint32_t df;
     if (( df = find_df(id,BLEHID_INPUT_REPORT) ))
@@ -612,7 +646,7 @@ BleHidReport *use_blehidReport(uint8_t id)
     return NULL;
 }
 
-BleHidReport *getIf_blehidReport(Event *e)
+const BleHidReport *getIf_blehidReport(Event *e)
 {
     if ( EVENT_IS_BLEHID_REPORT(e) )
     {
@@ -631,22 +665,24 @@ void update_blehidBatteryLevel(uint8_t level)
 {
     uint32_t err = ble_bas_battery_level_update(&bas, level);
     if ((err != NRF_SUCCESS) &&
-        (err != NRF_ERROR_INVALID_STATE) &&
-        (err != BLE_ERROR_NO_TX_PACKETS) &&
-        (err != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+        //(err != NRF_ERROR_INVALID_STATE) &&
+        //(err != BLE_ERROR_GATTS_SYS_ATTR_MISSING) &&
+        (err != BLE_ERROR_NO_TX_PACKETS)
        )
        __Success err;
 }
 
 bool is_blehidConnected(void)
 {
-    return connHandle != BLE_CONN_HANDLE_INVALID;
+    __Assert( connHandle != BLE_CONN_HANDLE_INVALID || !isConnected );
+    return isConnected;
 }
 
 static void on_bleEvent(const ble_evt_t *e);
 
 void dispatch_bleEvent(ble_evt_t *e)
 {
+    INFO("dispatch BLE event %?", $u(e->header.evt_id));
     ble_conn_state_on_ble_evt(e);
     pm_on_ble_evt(e);
     on_bleEvent(e);
@@ -658,6 +694,7 @@ void dispatch_bleEvent(ble_evt_t *e)
 
 void dispatch_sysEvent(uint32_t e)
 {
+    INFO("dispatch SYS event %?", $u(e));
     fs_sys_event_handler(e);
     ble_advertising_on_sys_evt(e);
 }
@@ -670,6 +707,8 @@ void on_pmEevent(const pm_evt_t *e)
     {
         case PM_EVT_BONDED_PEER_CONNECTED:
             INFO("connected to a previously bonded device");
+            isConnected = true;
+            signal_event(&evtConnect);
             break;
 
         case PM_EVT_CONN_SEC_SUCCEEDED:
@@ -688,7 +727,6 @@ void on_pmEevent(const pm_evt_t *e)
                 {
                     whitelistPeers[whitelistPeerCnt++] = peerId;
                     isWlChanged = true;
-                    (void)isWlChanged;
                 }
             }
             break;
@@ -806,7 +844,12 @@ void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e)
     {
         case BLE_HIDS_EVT_BOOT_MODE_ENTERED: break;
         case BLE_HIDS_EVT_REPORT_MODE_ENTERED: break;
-        case BLE_HIDS_EVT_NOTIF_ENABLED: break;
+        case BLE_HIDS_EVT_NOTIF_ENABLED:
+            INFO("notifications enabled");
+            break;
+        case BLE_HIDS_EVT_NOTIF_DISABLED:
+            INFO("notifications disabled");
+            break;
         case BLE_HIDS_EVT_REP_CHAR_WRITE:
             if ( e->params.char_write.char_id.rep_type == BLE_HIDS_REP_TYPE_OUTPUT )
             {
@@ -835,12 +878,17 @@ void on_bleEvent(const ble_evt_t *e)
         case BLE_GAP_EVT_CONNECTED:
             INFO("connected");
             connHandle = e->evt.gap_evt.conn_handle;
-            signal_event(&evtConnect);
             break;
 
         case BLE_EVT_TX_COMPLETE:
+            INFO("TX complete");
             on_inputRing();
             break;
+
+        //case BLE_GATTS_EVT_SYS_ATTR_MISSING:
+        //    INFO("sys attr missing");
+        //    sd_ble_gatts_sys_attr_set(e->evt.gatts_evt.conn_handle, NULL, 0, 0);
+        //    return;
 
         case BLE_GAP_EVT_DISCONNECTED:
             INFO("disconnected");
@@ -849,10 +897,14 @@ void on_bleEvent(const ble_evt_t *e)
 
             connHandle = BLE_CONN_HANDLE_INVALID;
 
-            __Success pm_whitelist_set(whitelistPeers,whitelistPeerCnt);
-            __Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
+            if ( isWlChanged )
+            {
+                __Success pm_whitelist_set(whitelistPeers,whitelistPeerCnt);
+                __Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
+                isWlChanged = false;
+            }
 
-            isWlChanged = false;
+            isConnected = false;
             signal_event(&evtConnect);
             break;
 

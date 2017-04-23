@@ -95,8 +95,8 @@
 #define EVENT_IS_BLEHID_REPORT(e) ((e)->o.id == EVENT_ID_BLEHID_REPORT)
 #pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEADV_IDLE ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
 #define EVENT_IS_BLEADV_IDLE(e) ((e)->o.id == EVENT_ID_BLEADV_IDLE)
-#pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEHID_CONNECT ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
-#define EVENT_IS_BLEHID_CONNECT(e) ((e)->o.id == EVENT_ID_BLEHID_CONNECT)
+#pragma uccm file(uccm_dynamic_defs.h) ~= #define EVENT_ID_BLEHID_CONNECT_CHANGED ({#EVENT_ID:1} + EVENT_ID_FIRST)\n
+#define EVENT_IS_BLEHID_CONNECT_CHANGED(e) ((e)->o.id == EVENT_ID_BLEHID_CONNECT_CHANGED)
 
 typedef enum BleHidReportKind BleHidReportKind;
 enum BleHidReportKind {
@@ -109,7 +109,7 @@ enum BleHidReportKind {
 
 enum
 {
-    BLEHID_MAX_REPORT_SIZE = 22,
+    BLEHID_MAX_REPORT_SIZE = 20,
 };
 
 #define BLEHID_REPORT(Kind,Length,Id,...) \
@@ -130,14 +130,6 @@ struct BleHidReport
     uint8_t bf[BLEHID_MAX_REPORT_SIZE];
 };
 
-typedef enum BleHidError BleHidError;
-enum BleHidError
-{
-    BLEHID_SUCCESS = 0,
-    BLEHID_NONFATAL_ERROR,
-    BLEHID_REPORT_ERROR,
-};
-
 void setup_blehid(
     const char *deviceName,
     const char *vendorName,
@@ -146,10 +138,87 @@ void setup_blehid(
     uint32_t count,
     ...);
 
-BleHidReport *getIf_blehidReport(Event* e);
-BleHidReport *use_blehidReport(uint8_t id);
+const BleHidReport *getIf_blehidReport(Event* e);
+BleHidReport *use_blehidInputReport(uint8_t id);
+BleHidReport *get_blehidReport();
+
 void send_blehidReport(void);
-void erase_bleBonds(void);
+void erase_blehidBonds(void);
 void start_blehidAdvertising(void);
 void update_blehidBatteryLevel(uint8_t level);
 bool is_blehidConnected(void);
+
+__Inline
+void fill_blehidReport(uint8_t value)
+{
+    BleHidReport *r = get_blehidReport();
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    memset(r->bf,value,r->length);
+}
+
+__Inline
+void copyTo_blehidReport(size_t offset, const void *from, size_t len)
+{
+    BleHidReport *r = get_blehidReport();
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    __Assert(r->length >= len+offset);
+    memcpy(r->bf+offset,from,len);
+}
+
+__Inline
+uint8_t *bufferOf_blehidReport(size_t length)
+{
+    BleHidReport *r = get_blehidReport();
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    __Assert(r->length >= length);
+    return r->bf;
+}
+
+__Inline
+void copyFrom_blehidReport(const BleHidReport* r, size_t offset, void *to, size_t len)
+{
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    __Assert(r->length >= len+offset);
+    memcpy(to,r->bf+offset,len);
+}
+
+__Inline
+size_t lengthOf_blehidReport(const BleHidReport* r)
+{
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    return r->length;
+}
+
+__Inline
+uint8_t idOf_blehidReport(const BleHidReport* r)
+{
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    return r->id;
+
+}
+
+__Inline
+const uint8_t *bytesOf_blehidReport(const BleHidReport* r, size_t length)
+{
+    __Assert(r!=NULL);
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    __Assert(r->length >= length);
+    return r->bf;
+}
+
+__Inline
+BleHidReportKind kindOf_blehidReport(const BleHidReport* r)
+{
+    if ( r == NULL ) return BLEHID_NIL_REPORT;
+    __Assert(r->kind != BLEHID_NIL_REPORT);
+    return r->kind;
+}
+
+#define cast_blehidReport(T) ((T*)bufferOf_blehidReport(sizeof(T)))
+#define ccast_blehidReport(T,R) ((const T*)bytesOf_blehidReport(R,sizeof(T)))
