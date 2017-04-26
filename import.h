@@ -130,11 +130,18 @@ struct BleHidReport
     uint8_t bf[BLEHID_MAX_REPORT_SIZE];
 };
 
+enum uc_blehid$SetupFlags
+{
+    BLEHID_ERASE_BONDS = 1,
+    BLEHID_AUTO_READVERTISE = 2,
+};
+
 void setup_blehid(
     const char *deviceName,
     const char *vendorName,
     uint16_t vendorId,
     uint16_t productId,
+    uint32_t flags,
     uint32_t count,
     ...);
 

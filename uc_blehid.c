@@ -48,13 +48,13 @@
 #define SEC_PARAM_MIN_KEY_SIZE              7
 #define SEC_PARAM_MAX_KEY_SIZE              16
 
-static Event advIdle = {
+static Event EvtOnAdvIdle = {
     NULL, NULL,
     {0},
     {.id = EVENT_ID_BLEADV_IDLE, .kind = ACTIVATE_BY_SIGNAL, .repeat = 0}
 };
 
-static Event evtConnect = {
+static Event EvtOnConnect = {
     NULL, NULL,
     {0},
     {.id = EVENT_ID_BLEHID_CONNECT_CHANGED, .kind = ACTIVATE_BY_SIGNAL, .repeat = 0}
@@ -62,17 +62,17 @@ static Event evtConnect = {
 
 static void on_evtReportComplete(Event*);
 
-static Event evtReport = {
+static Event EvtOnReport = {
     NULL, on_evtReportComplete,
     {0},
     {.id = EVENT_ID_BLEHID_REPORT, .kind = CALLBACK_ON_COMPLETE, .repeat = 0}
 };
 
-static uint8_t  reportMap[BLEHID_REPORT_MAP_MAX_LENGTH];
+static uint8_t  ReportMap[BLEHID_REPORT_MAP_MAX_LENGTH];
 
-static uint32_t dfInrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
-static uint32_t dfOutrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
-static uint32_t dfFerep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
+static uint32_t DfInrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
+static uint32_t DfOutrep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
+static uint32_t DfFerep[BLEHID_REPORTS_DEF_MAX_COUNT] = {0,};
 
 #define BLEHID_OUTPUT_RING_COUNT 5
 #define BLEHID_INPUT_RING_COUNT 5
@@ -86,29 +86,30 @@ struct BleReportRing
     BleHidReport r[1];
 };
 
-struct { BleReportRing rng; BleHidReport r[BLEHID_INPUT_RING_COUNT-1]; } inputRing =
+struct { BleReportRing rng; BleHidReport r[BLEHID_INPUT_RING_COUNT-1]; } InputRing =
 {
     .rng = { .cons = 0, .prod = 0, .count = BLEHID_INPUT_RING_COUNT }
 };
 
-struct { BleReportRing rng; BleHidReport r[BLEHID_OUTPUT_RING_COUNT-1]; } outputRing =
+struct { BleReportRing rng; BleHidReport r[BLEHID_OUTPUT_RING_COUNT-1]; } OutputRing =
 {
     .rng = { .cons = 0, .prod = 0, .count = BLEHID_OUTPUT_RING_COUNT }
 };
 
-BleReportRing* const ringSet[BLEHID_MAX_REPORT] = { NULL, &inputRing.rng, &outputRing.rng, &outputRing.rng };
+BleReportRing* const RingSet[BLEHID_MAX_REPORT] = { NULL, &InputRing.rng, &OutputRing.rng, &OutputRing.rng };
 
-static ble_hids_t hids;
-static ble_bas_t bas;
-static uint16_t connHandle = BLE_CONN_HANDLE_INVALID;
+static ble_hids_t HidS;
+static ble_bas_t BaS;
+static uint16_t ConnHandle = BLE_CONN_HANDLE_INVALID;
 
-static pm_peer_id_t peerId = PM_PEER_ID_INVALID;
-static pm_peer_id_t whitelistPeers[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
-static uint32_t whitelistPeerCnt;
-static bool isWlChanged = false;
-static bool isConnected = false;
+static pm_peer_id_t PeerId = PM_PEER_ID_INVALID;
+static pm_peer_id_t WhitelistPeers[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
+static uint32_t WhitelistPeerCnt;
+static bool IsWlChanged = false;
+static bool IsConnected = false;
+static bool AutoReadvertise = false;
 
-static ble_uuid_t advUuids[] = {
+static ble_uuid_t AdvUuids[] = {
     {
         BLE_UUID_HUMAN_INTERFACE_DEVICE_SERVICE,
         BLE_UUID_TYPE_BLE
@@ -156,9 +157,9 @@ static uint32_t find_df(uint8_t id, BleHidReportKind kind)
 {
     switch (kind)
     {
-        case BLEHID_INPUT_REPORT: return find_inDfs(id,dfInrep);
-        case BLEHID_OUTPUT_REPORT: return find_inDfs(id,dfOutrep);
-        case BLEHID_FEATURE_REPORT: return find_inDfs(id,dfFerep);
+        case BLEHID_INPUT_REPORT: return find_inDfs(id,DfInrep);
+        case BLEHID_OUTPUT_REPORT: return find_inDfs(id,DfOutrep);
+        case BLEHID_FEATURE_REPORT: return find_inDfs(id,DfFerep);
         default: __Assert_S(0, "unknown type of report");
     }
 
@@ -170,9 +171,9 @@ static void append_df(uint32_t df)
     uint8_t kind = (uint8_t)(df >> 24);
     switch (kind)
     {
-        case BLEHID_INPUT_REPORT: append_toDfs(df,dfInrep); return;
-        case BLEHID_OUTPUT_REPORT: append_toDfs(df,dfOutrep); return;
-        case BLEHID_FEATURE_REPORT: append_toDfs(df,dfFerep); return;
+        case BLEHID_INPUT_REPORT: append_toDfs(df,DfInrep); return;
+        case BLEHID_OUTPUT_REPORT: append_toDfs(df,DfOutrep); return;
+        case BLEHID_FEATURE_REPORT: append_toDfs(df,DfFerep); return;
         default: __Assert_S(0, "unknown type of report");
     }
 }
@@ -197,17 +198,9 @@ static void get_peerList(pm_peer_id_t *peers, uint32_t *size)
 
 void start_blehidAdvertising()
 {
-    memset(whitelistPeers, PM_PEER_ID_INVALID, sizeof(whitelistPeers));
-
-    whitelistPeerCnt = (sizeof(whitelistPeers) / sizeof(pm_peer_id_t));
-    get_peerList(whitelistPeers, &whitelistPeerCnt);
-
-    __Success pm_whitelist_set(whitelistPeers, whitelistPeerCnt);
-    __Supported pm_device_identities_list_set(whitelistPeers, whitelistPeerCnt);
-
-    isWlChanged = false;
-
-    __Success ble_advertising_start(BLE_ADV_MODE_FAST);
+    uint32_t err = ble_advertising_start(BLE_ADV_MODE_FAST);
+    if ( err != NRF_ERROR_INVALID_STATE )
+        __Success err;
 }
 
 static void init_gapParams(const char *deviceName)
@@ -261,7 +254,7 @@ static void init_bas(void)
     BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&basInitObj.battery_level_char_attr_md.write_perm);
     BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&basInitObj.battery_level_report_read_perm);
 
-    __Success ble_bas_init(&bas, &basInitObj);
+    __Success ble_bas_init(&BaS, &basInitObj);
 }
 
 static void on_pmEevent(pm_evt_t const *e);
@@ -272,17 +265,20 @@ void erase_blehidBonds(void)
     err = sd_ble_gap_adv_stop();
     if ( err != NRF_ERROR_INVALID_STATE )
         __Success err;
-    isWlChanged = false;
-    if ( connHandle != BLE_CONN_HANDLE_INVALID)
-        __Success sd_ble_gap_disconnect(connHandle,BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+    IsWlChanged = false;
+    if ( ConnHandle != BLE_CONN_HANDLE_INVALID)
+        __Success sd_ble_gap_disconnect(ConnHandle,BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     pm_peers_delete();
 }
 
-static void init_peerManager(void)
+static void init_peerManager(bool eraseBounds)
 {
     ble_gap_sec_params_t secParam = {0,};
 
     __Success pm_init();
+
+    if ( eraseBounds )
+        __Success pm_peers_delete();
 
     secParam.bond           = SEC_PARAM_BOND;
     secParam.mitm           = SEC_PARAM_MITM;
@@ -315,8 +311,8 @@ static void init_advertising(void)
     advdata.name_type               = BLE_ADVDATA_FULL_NAME;
     advdata.include_appearance      = true;
     advdata.flags                   = flags;
-    advdata.uuids_complete.uuid_cnt = sizeof(advUuids) / sizeof(advUuids[0]);
-    advdata.uuids_complete.p_uuids  = advUuids;
+    advdata.uuids_complete.uuid_cnt = sizeof(AdvUuids) / sizeof(AdvUuids[0]);
+    advdata.uuids_complete.p_uuids  = AdvUuids;
 
     options.ble_adv_whitelist_enabled      = true;
     options.ble_adv_directed_enabled       = true;
@@ -366,9 +362,9 @@ static void init_hids()
     size_t                      ferepCount;
     uint8_t                     hidInfoFlags;
 
-    for (inrepCount = 0; inrepCount < BLEHID_REPORTS_DEF_MAX_COUNT && dfInrep[inrepCount]; ++inrepCount )
+    for (inrepCount = 0; inrepCount < BLEHID_REPORTS_DEF_MAX_COUNT && DfInrep[inrepCount]; ++inrepCount )
     {
-        uint32_t df = dfInrep[inrepCount];
+        uint32_t df = DfInrep[inrepCount];
         ble_hids_inp_rep_init_t *r = inrep + inrepCount;
         r->max_len = REPORT_LEN(df);
         r->rep_ref.report_id = REPORT_ID(df);
@@ -378,9 +374,9 @@ static void init_hids()
         BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&r->security_mode.write_perm);
     }
 
-    for (outrepCount = 0; outrepCount < BLEHID_REPORTS_DEF_MAX_COUNT && dfInrep[outrepCount]; ++outrepCount )
+    for (outrepCount = 0; outrepCount < BLEHID_REPORTS_DEF_MAX_COUNT && DfInrep[outrepCount]; ++outrepCount )
     {
-        uint32_t df = dfOutrep[outrepCount];
+        uint32_t df = DfOutrep[outrepCount];
         ble_hids_outp_rep_init_t *r = outrep + outrepCount;
         r->max_len = REPORT_LEN(df);
         r->rep_ref.report_id = REPORT_ID(df);
@@ -389,9 +385,9 @@ static void init_hids()
         BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&r->security_mode.write_perm);
     }
 
-    for (ferepCount = 0; ferepCount < BLEHID_REPORTS_DEF_MAX_COUNT && dfFerep[ferepCount]; ++ferepCount )
+    for (ferepCount = 0; ferepCount < BLEHID_REPORTS_DEF_MAX_COUNT && DfFerep[ferepCount]; ++ferepCount )
     {
-        uint32_t df = dfFerep[ferepCount];
+        uint32_t df = DfFerep[ferepCount];
         ble_hids_feature_rep_init_t *r = ferep + ferepCount;
         r->max_len = REPORT_LEN(df);
         r->rep_ref.report_id = REPORT_ID(df);
@@ -413,7 +409,7 @@ static void init_hids()
     hidsInitObj.p_outp_rep_array               = outrep;
     hidsInitObj.feature_rep_count              = ferepCount;
     hidsInitObj.p_feature_rep_array            = ferep;
-    hidsInitObj.rep_map.p_data                 = reportMap;
+    hidsInitObj.rep_map.p_data                 = ReportMap;
     hidsInitObj.hid_information.bcd_hid        = 0x0101;
     hidsInitObj.hid_information.b_country_code = 0;
     hidsInitObj.hid_information.flags          = hidInfoFlags;
@@ -430,12 +426,12 @@ static void init_hids()
     BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&hidsInitObj.security_mode_ctrl_point.write_perm);
 
     size_t len = 7;
-    memcpy(reportMap,"\x06\x00\xff\x09\x01\xa1\x01",len);
+    memcpy(ReportMap,"\x06\x00\xff\x09\x01\xa1\x01",len);
     // Usage Page (Generic Desktop)
     // Usage (Vendor Defined)
     // Collection (Application)
 
-    uint32_t *dfs[3] = {dfInrep,dfOutrep,dfFerep};
+    uint32_t *dfs[3] = {DfInrep,DfOutrep,DfFerep};
     uint8_t   tp[3]  = {0x81,0x91,0xb1};
 
     for ( size_t q = 0; q < 3; ++q)
@@ -447,32 +443,32 @@ static void init_hids()
             if ( REPORT_ID(df) )
             {
                 __Assert(len+2+13 < BLEHID_REPORT_MAP_MAX_LENGTH);
-                reportMap[len++] = 0x85; // Report ID
-                reportMap[len++] = REPORT_ID(df);
+                ReportMap[len++] = 0x85; // Report ID
+                ReportMap[len++] = REPORT_ID(df);
             }
 
             __Assert(len+13 < BLEHID_REPORT_MAP_MAX_LENGTH);
-            reportMap[len++] = 0x09;  // Vendor Usage
-            reportMap[len++] = 0x01;
-            reportMap[len++] = 0x15;  // LOGICAL_MINIMUM
-            reportMap[len++] = 0x00;  // 0
-            reportMap[len++] = 0x26;  // LOGICAL_MAXIMUM
-            reportMap[len++] = 0xff;  // 255
-            reportMap[len++] = 0x00;
-            reportMap[len++] = 0x75;  // Report Size
-            reportMap[len++] = 0x08;  // 8-bit
-            reportMap[len++] = 0x95;  // Report Count
-            reportMap[len++] = REPORT_LEN(df);
-            reportMap[len++] = tp[q]; // Input / Output / Feature
-            reportMap[len++] = 0x82;  // (Data, Variable, Absolute)
+            ReportMap[len++] = 0x09;  // Vendor Usage
+            ReportMap[len++] = 0x01;
+            ReportMap[len++] = 0x15;  // LOGICAL_MINIMUM
+            ReportMap[len++] = 0x00;  // 0
+            ReportMap[len++] = 0x26;  // LOGICAL_MAXIMUM
+            ReportMap[len++] = 0xff;  // 255
+            ReportMap[len++] = 0x00;
+            ReportMap[len++] = 0x75;  // Report Size
+            ReportMap[len++] = 0x08;  // 8-bit
+            ReportMap[len++] = 0x95;  // Report Count
+            ReportMap[len++] = REPORT_LEN(df);
+            ReportMap[len++] = tp[q]; // Input / Output / Feature
+            ReportMap[len++] = 0x82;  // (Data, Variable, Absolute)
         }
     }
 
     __Assert(len < BLEHID_REPORT_MAP_MAX_LENGTH);
-    reportMap[len++] = 0xc0;
+    ReportMap[len++] = 0xc0;
     hidsInitObj.rep_map.data_len = len;
 
-    __Success ble_hids_init(&hids,&hidsInitObj);
+    __Success ble_hids_init(&HidS,&hidsInitObj);
 }
 
 static void dispatch_bleEvent(ble_evt_t *e);
@@ -483,6 +479,7 @@ void setup_blehid(
     const char *vendorName,
     uint16_t vendorId,
     uint16_t productId,
+    uint32_t flags,
     uint32_t count,
     ...)
 {
@@ -512,18 +509,29 @@ void setup_blehid(
     __Success softdevice_ble_evt_handler_set(dispatch_bleEvent);
     __Success softdevice_sys_evt_handler_set(dispatch_sysEvent);
 
-    init_peerManager();
+    init_peerManager(!!(flags&BLEHID_ERASE_BONDS));
     init_gapParams(deviceName);
     init_bas();
     init_dis(vendorId,productId,vendorName);
     init_hids();
     init_connParams();
     init_advertising();
+
+    memset(WhitelistPeers, PM_PEER_ID_INVALID, sizeof(WhitelistPeers));
+
+    WhitelistPeerCnt = (sizeof(WhitelistPeers) / sizeof(pm_peer_id_t));
+    get_peerList(WhitelistPeers, &WhitelistPeerCnt);
+
+    __Success pm_whitelist_set(WhitelistPeers, WhitelistPeerCnt);
+    __Supported pm_device_identities_list_set(WhitelistPeers, WhitelistPeerCnt);
+
+    IsWlChanged = false;
+    AutoReadvertise = !!(BLEHID_AUTO_READVERTISE&flags);
 }
 
 BleHidReport *get_blehidReport()
 {
-    BleReportRing *rng = &inputRing.rng;
+    BleReportRing *rng = &InputRing.rng;
     __Assert(rng->prod >= rng->cons);
     if ( (rng->prod - rng->cons) < rng->count )
         return &rng->r[rng->prod % rng->count];
@@ -536,7 +544,7 @@ static BleHidReport *get_report(uint32_t df)
     BleHidReportKind kind = (BleHidReportKind)REPORT_KIND(df);
     __Assert(kind && kind < BLEHID_MAX_REPORT);
 
-    BleReportRing *rng = ringSet[kind];
+    BleReportRing *rng = RingSet[kind];
     __Assert(rng != NULL);
     __Assert(rng->prod >= rng->cons);
     if ( (rng->prod - rng->cons) < rng->count )
@@ -576,15 +584,15 @@ BleHidReport *complete_onRing(BleReportRing* rng)
     return r;
 }
 
-static void on_inputRing(void)
+static void on_InputRing(void)
 {
-    if ( inputRing.rng.cons != inputRing.rng.prod )
+    if ( InputRing.rng.cons != InputRing.rng.prod )
     {
-        //INFO("inR: Cons: %? Prod: %? Count: %?", $u(inputRing.rng.cons), $u(inputRing.rng.prod), $u(inputRing.rng.count) );
-        BleHidReport *r = inputRing.rng.r + (inputRing.rng.cons%inputRing.rng.count);
+        //INFO("inR: Cons: %? Prod: %? Count: %?", $u(InputRing.rng.cons), $u(InputRing.rng.prod), $u(InputRing.rng.count) );
+        BleHidReport *r = InputRing.rng.r + (InputRing.rng.cons%InputRing.rng.count);
         //INFO("inR: Id: %? Len: %? Kind: %?", $u(r->id), $u(r->length), $u(r->kind) );
         uint32_t err = 0;
-        err = ble_hids_inp_rep_send(&hids,r->id,r->length,r->bf);
+        err = ble_hids_inp_rep_send(&HidS,r->id,r->length,r->bf);
         if ( err != BLE_ERROR_GATTS_SYS_ATTR_MISSING &&
              err != BLE_ERROR_NO_TX_PACKETS &&
              err != NRF_ERROR_INVALID_STATE &&
@@ -597,7 +605,7 @@ static void on_inputRing(void)
         }
         else
         {
-            __Critical ++inputRing.rng.cons;
+            __Critical ++InputRing.rng.cons;
         }
     }
 }
@@ -606,36 +614,36 @@ void send_blehidReport()
 {
     if ( is_blehidConnected() )
     {
-        complete_onRing(&inputRing.rng);
-        on_inputRing();
+        complete_onRing(&InputRing.rng);
+        on_InputRing();
     }
 }
 
-static void on_outputRing(void)
+static void on_OutputRing(void)
 {
-    if ( outputRing.rng.cons != outputRing.rng.prod )
-        signal_event(&evtReport);
+    if ( OutputRing.rng.cons != OutputRing.rng.prod )
+        signal_event(&EvtOnReport);
 }
 
 static void complete_outputReport()
 {
-    INFO("OtR: Cons: %? Prod: %? Count: %?", $u(outputRing.rng.cons), $u(outputRing.rng.prod), $u(outputRing.rng.count) );
-    complete_onRing(&outputRing.rng);
-    on_outputRing();
+    INFO("OtR: Cons: %? Prod: %? Count: %?", $u(OutputRing.rng.cons), $u(OutputRing.rng.prod), $u(OutputRing.rng.count) );
+    complete_onRing(&OutputRing.rng);
+    on_OutputRing();
 }
 
 static void on_evtReportComplete(Event *e)
 {
     BleReportRing *rng = NULL;
 
-    if ( e == &evtReport )
-        rng = &outputRing.rng;
+    if ( e == &EvtOnReport )
+        rng = &OutputRing.rng;
 
     __Assert( rng != NULL );
     __Assert(rng->prod > rng->cons);
     __Critical ++rng->cons;
 
-    on_outputRing();
+    on_OutputRing();
 }
 
 BleHidReport *use_blehidInputReport(uint8_t id)
@@ -651,8 +659,8 @@ const BleHidReport *getIf_blehidReport(Event *e)
     if ( EVENT_IS_BLEHID_REPORT(e) )
     {
         BleReportRing *rng = NULL;
-        if ( e == &evtReport )
-            rng = &outputRing.rng;
+        if ( e == &EvtOnReport )
+            rng = &OutputRing.rng;
 
         if ( rng && rng->cons != rng->prod )
             return &rng->r[rng->cons%rng->count];
@@ -663,7 +671,7 @@ const BleHidReport *getIf_blehidReport(Event *e)
 
 void update_blehidBatteryLevel(uint8_t level)
 {
-    uint32_t err = ble_bas_battery_level_update(&bas, level);
+    uint32_t err = ble_bas_battery_level_update(&BaS, level);
     if ((err != NRF_SUCCESS) &&
         //(err != NRF_ERROR_INVALID_STATE) &&
         //(err != BLE_ERROR_GATTS_SYS_ATTR_MISSING) &&
@@ -674,27 +682,25 @@ void update_blehidBatteryLevel(uint8_t level)
 
 bool is_blehidConnected(void)
 {
-    __Assert( connHandle != BLE_CONN_HANDLE_INVALID || !isConnected );
-    return isConnected;
+    __Assert( ConnHandle != BLE_CONN_HANDLE_INVALID || !IsConnected );
+    return IsConnected;
 }
 
 static void on_bleEvent(const ble_evt_t *e);
 
 void dispatch_bleEvent(ble_evt_t *e)
 {
-    INFO("dispatch BLE event %?", $u(e->header.evt_id));
     ble_conn_state_on_ble_evt(e);
     pm_on_ble_evt(e);
     on_bleEvent(e);
     ble_advertising_on_ble_evt(e);
     ble_conn_params_on_ble_evt(e);
-    ble_hids_on_ble_evt(&hids,e);
-    ble_bas_on_ble_evt(&bas,e);
+    ble_hids_on_ble_evt(&HidS,e);
+    ble_bas_on_ble_evt(&BaS,e);
 }
 
 void dispatch_sysEvent(uint32_t e)
 {
-    INFO("dispatch SYS event %?", $u(e));
     fs_sys_event_handler(e);
     ble_advertising_on_sys_evt(e);
 }
@@ -702,13 +708,9 @@ void dispatch_sysEvent(uint32_t e)
 void on_pmEevent(const pm_evt_t *e)
 {
     uint32_t err;
-    INFO("on_pmEevent => %?",$u(e->evt_id));
     switch ( e->evt_id )
     {
         case PM_EVT_BONDED_PEER_CONNECTED:
-            INFO("connected to a previously bonded device");
-            isConnected = true;
-            signal_event(&evtConnect);
             break;
 
         case PM_EVT_CONN_SEC_SUCCEEDED:
@@ -716,19 +718,21 @@ void on_pmEevent(const pm_evt_t *e)
                     $u(ble_conn_state_role(e->conn_handle)),
                     $u(e->conn_handle),
                     $u(e->params.conn_sec_succeeded.procedure));
-            peerId = e->peer_id;
+            PeerId = e->peer_id;
             if ( e->params.conn_sec_succeeded.procedure == PM_LINK_SECURED_PROCEDURE_BONDING )
             {
                 INFO("new bond, add the peer to whitelist");
                 INFO("whitelist peer's count %?, maximum %?",
-                     $u(whitelistPeerCnt),
+                     $u(WhitelistPeerCnt),
                      $u(BLE_GAP_WHITELIST_ADDR_MAX_COUNT));
-                if ( whitelistPeerCnt < BLE_GAP_WHITELIST_ADDR_MAX_COUNT )
+                if ( WhitelistPeerCnt < BLE_GAP_WHITELIST_ADDR_MAX_COUNT )
                 {
-                    whitelistPeers[whitelistPeerCnt++] = peerId;
-                    isWlChanged = true;
+                    WhitelistPeers[WhitelistPeerCnt++] = PeerId;
+                    IsWlChanged = true;
                 }
             }
+            IsConnected = true;
+            signal_event(&EvtOnConnect);
             break;
 
         case PM_EVT_CONN_SEC_FAILED: // nothing yet currently
@@ -801,7 +805,10 @@ void on_advertisingEvent(ble_adv_evt_t e)
             break;
         case BLE_ADV_EVT_IDLE:
             INFO("evt => BLE_ADV_EVT_IDLE");
-            signal_event(&advIdle);
+            if ( AutoReadvertise )
+                start_blehidAdvertising();
+            else
+                signal_event(&EvtOnAdvIdle);
             break;
         case BLE_ADV_EVT_WHITELIST_REQUEST:
             INFO("evt => BLE_ADV_EVT_WHITELIST_REQUEST");
@@ -820,9 +827,9 @@ void on_advertisingEvent(ble_adv_evt_t e)
         {
             pm_peer_data_bonding_t p;
 
-            if ( peerId != PM_PEER_ID_INVALID )
+            if ( PeerId != PM_PEER_ID_INVALID )
             {
-                err = pm_peer_data_bonding_load(peerId,&p);
+                err = pm_peer_data_bonding_load(PeerId,&p);
                 if ( err != NRF_ERROR_NOT_FOUND )
                 {
                     __Success err;
@@ -854,7 +861,7 @@ void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e)
             if ( e->params.char_write.char_id.rep_type == BLE_HIDS_REP_TYPE_OUTPUT )
             {
                 uint8_t rId = e->params.char_write.char_id.rep_index;                
-                uint32_t df = find_inDfs(rId,dfOutrep);
+                uint32_t df = find_inDfs(rId,DfOutrep);
                 __Assert( df != 0 && REPORT_ID(df) == rId);
 
                 BleHidReport *r = get_report(df);
@@ -872,17 +879,14 @@ void on_hidsEvent(ble_hids_t *hids, ble_hids_evt_t *e)
 
 void on_bleEvent(const ble_evt_t *e)
 {
-    INFO("on_bleEvent => %?",$u(e->header.evt_id));
     switch ( e->header.evt_id )
     {
         case BLE_GAP_EVT_CONNECTED:
-            INFO("connected");
-            connHandle = e->evt.gap_evt.conn_handle;
+            ConnHandle = e->evt.gap_evt.conn_handle;
             break;
 
         case BLE_EVT_TX_COMPLETE:
-            INFO("TX complete");
-            on_inputRing();
+            on_InputRing();
             break;
 
         //case BLE_GATTS_EVT_SYS_ATTR_MISSING:
@@ -891,37 +895,38 @@ void on_bleEvent(const ble_evt_t *e)
         //    return;
 
         case BLE_GAP_EVT_DISCONNECTED:
-            INFO("disconnected");
 
-            __Critical inputRing.rng.cons = inputRing.rng.prod;
+            __Critical InputRing.rng.cons = InputRing.rng.prod;
 
-            connHandle = BLE_CONN_HANDLE_INVALID;
+            ConnHandle = BLE_CONN_HANDLE_INVALID;
 
-            if ( isWlChanged )
+            if ( IsWlChanged )
             {
-                __Success pm_whitelist_set(whitelistPeers,whitelistPeerCnt);
-                __Supported pm_device_identities_list_set(whitelistPeers,whitelistPeerCnt);
-                isWlChanged = false;
+                __Success pm_whitelist_set(WhitelistPeers,WhitelistPeerCnt);
+                __Supported pm_device_identities_list_set(WhitelistPeers,WhitelistPeerCnt);
+                IsWlChanged = false;
             }
 
-            isConnected = false;
-            signal_event(&evtConnect);
+            IsConnected = false;
+            signal_event(&EvtOnConnect);
+
+            if ( AutoReadvertise )
+                start_blehidAdvertising();
+
             break;
 
         case BLE_GATTC_EVT_TIMEOUT:
-            INFO("GATT client timeout");
             __Success sd_ble_gap_disconnect(e->evt.gattc_evt.conn_handle,
                                                 BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             break;
 
         case BLE_GATTS_EVT_TIMEOUT:
-            INFO("GATT server timeout");
             __Success sd_ble_gap_disconnect(e->evt.gatts_evt.conn_handle,
                                                 BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             break;
 
         case BLE_EVT_USER_MEM_REQUEST:
-            __Success sd_ble_user_mem_reply(connHandle, NULL);
+            __Success sd_ble_user_mem_reply(ConnHandle, NULL);
             break;
 
         case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
